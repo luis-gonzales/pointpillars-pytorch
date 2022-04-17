@@ -120,11 +120,7 @@ class ArgMaxMatcher(object):  # cannot inherit with torchscript
             matches:  int32 tensor indicating the row each column matches to.
         """
         # Matches for each column
-        print("similarity_matrix:")
-        print(similarity_matrix)
         matched_vals, matches = torch.max(similarity_matrix, 0)
-        print("matched_vals =", matched_vals)
-        print("matches =", matches)
 
         # Deal with matched and unmatched threshold
         if self._matched_threshold is not None:
@@ -140,7 +136,6 @@ class ArgMaxMatcher(object):  # cannot inherit with torchscript
                 matches = self._set_values_using_indicator(matches, below_unmatched_threshold, -2)
                 matches = self._set_values_using_indicator(matches, between_thresholds, -1)
 
-        print("argmax_matcher self._force_match_for_each_row:", self._force_match_for_each_row)
         if self._force_match_for_each_row:
             force_match_column_ids = torch.argmax(similarity_matrix, 1)
             force_match_column_indicators = one_hot_bool(force_match_column_ids, similarity_matrix.shape[1])
@@ -148,8 +143,6 @@ class ArgMaxMatcher(object):  # cannot inherit with torchscript
             final_matches = torch.where(force_match_column_mask, force_match_row_ids, matches)
             return final_matches
         else:
-            print("argmax_matcher matches:", torch.unique(matches))
-            print(matches)
             return matches
 
     def match(self, similarity_matrix):
