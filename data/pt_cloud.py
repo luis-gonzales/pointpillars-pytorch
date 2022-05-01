@@ -4,12 +4,12 @@ import numpy as np
 
 
 def pt_cloud_to_pillars(pt_cloud, config):
-    x_min = config.x_min
-    x_max = config.x_max
-    y_min = config.y_min
-    y_max = config.y_max
-    z_min = config.z_min
-    z_max = config.z_max
+    x_min = config.x_range[0]
+    x_max = config.x_range[1]
+    y_min = config.y_range[0]
+    y_max = config.y_range[1]
+    z_min = config.z_range[0]
+    z_max = config.z_range[1]
     resolution = config.resolution
 
     # mask out points out of range
@@ -49,9 +49,11 @@ def pt_cloud_to_pillars(pt_cloud, config):
     stacked_pillars = np.zeros((D, P, N), dtype=np.float32)
     indices = np.zeros((P, 2), dtype=np.int64)
 
+    # randomly sample P pillars
     if len(pointpillar_map.keys()) > P:
-        print("randomly sample indices and clip")
-        assert False, "not yet implemented" # TODO
+        keys_to_delete = sample(pointpillar_map.keys(), len(pointpillar_map.keys()) - P)
+        for k in keys_to_delete:
+            pointpillar_map.pop(k)
 
     for p, (idx, pts) in enumerate(pointpillar_map.items()):
         indices[p, :] = idx

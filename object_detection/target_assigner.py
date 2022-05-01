@@ -145,13 +145,13 @@ class TargetAssigner(object):
 
         # ignore height and elevation during matching; similarity calc assumes y1,x1,y2,x2
         gt_boxes_for_compare = groundtruth_boxes.data["boxes"][:, [1, 0, 1, 0]]
-        gt_boxes_for_compare[:, [0, 1]] -= groundtruth_boxes.data["boxes"][:, [3, 4]] / 2
-        gt_boxes_for_compare[:, [2, 3]] += groundtruth_boxes.data["boxes"][:, [3, 4]] / 2
+        gt_boxes_for_compare[:, [0, 1]] -= groundtruth_boxes.data["boxes"][:, [4, 3]] / 2
+        gt_boxes_for_compare[:, [2, 3]] += groundtruth_boxes.data["boxes"][:, [4, 3]] / 2
         gt_boxes_for_compare = BoxList(gt_boxes_for_compare)
 
         anchors_for_compare = anchors.data["boxes"][:, [1, 0, 1, 0]]
-        anchors_for_compare[:, [0, 1]] -= anchors.data["boxes"][:, [3, 4]] / 2
-        anchors_for_compare[:, [2, 3]] += anchors.data["boxes"][:, [3, 4]] / 2
+        anchors_for_compare[:, [0, 1]] -= anchors.data["boxes"][:, [4, 3]] / 2
+        anchors_for_compare[:, [2, 3]] += anchors.data["boxes"][:, [4, 3]] / 2
         anchors_for_compare = BoxList(anchors_for_compare)
 
         match_quality_matrix = self._similarity_calc.compare(gt_boxes_for_compare, anchors_for_compare)
