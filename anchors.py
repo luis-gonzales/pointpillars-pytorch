@@ -110,21 +110,15 @@ def generate_detections(
     # Apply bounding box regression to anchors, boxes are converted to xyxy
     # here since PyTorch NMS expects them in that form.
     boxes = decode_box_outputs(box_outputs.float(), anchor_boxes)
-    print("boxes:")
-    print(boxes)
     if img_scale is not None and img_size is not None:
         boxes = clip_boxes_xyxy(boxes, img_size / img_scale)  # clip before NMS better?
 
     scores = cls_outputs.sigmoid().squeeze(1).float()
-    print("scores:")
-    print(scores)
-    print(torch.unique(scores, return_counts=True))
 
-    # expect Nx4 of x1, y1, x2, y2     x, y, z, w, l, h
+    # batched_nms expects Nx4 of (x1, y1, x2, y2); boxes are (x, y, z, w, l, h)
     nms_boxes = boxes[:, [0, 1, 0, 1]]
-    nms_boxes[:, [0, 1]] -= boxes[:, [4, 3]] / 2
-    nms_boxes[:, [2, 3]] += boxes[:, [4, 3]] / 2
-    print("boxes:", boxes.shape)
+    nms_boxes[:, [0, 1]] -= boxes[:, [3, 4]] / 2
+    nms_boxes[:, [2, 3]] += boxes[:, [3, 4]] / 2
 
     if soft_nms:
         top_detection_idx, soft_scores = batched_soft_nms(
@@ -153,7 +147,7 @@ def generate_detections(
             detections,
             torch.zeros((max_det_per_image - num_det, 6), device=detections.device, dtype=detections.dtype)
         ], dim=0)
-    return detections
+    return detections   # x, y, z, w, l, h, conf, class_idx
 
 
 def get_feat_sizes(image_size: Tuple[int, int], max_level: int):
@@ -346,7 +340,7 @@ class AnchorLabeler(object):
 
 
 if __name__ == "__main__":
-    from temp import post_process
+    from inference import _post_process
 
 
     w, h = 80.0, 70.4   # car x, y, z range is [(0, 70.4), (-40, 40), (-3, 1)]
@@ -363,8 +357,6 @@ if __name__ == "__main__":
     print("anchors.boxes:")
     print(anchors.boxes)    # x, y, z, w, l, h (w, l is birdseye view)
 
-    anchor_labeler = AnchorLabeler(anchors, pos_match_threshold=0.6, neg_match_threshold=0.45)
-
     gt_boxes = [[58.49, -16.53, 2.39, 1.87, 3.69, 1.67]]    # x, y, z, w, l, h
     gt_classes = [1]
 
@@ -373,6 +365,8 @@ if __name__ == "__main__":
 
     gt_boxes = torch.tensor(gt_boxes)
     gt_classes = torch.tensor(gt_classes)
+
+    anchor_labeler = AnchorLabeler(anchors, pos_match_threshold=0.6, neg_match_threshold=0.45)
 
     cls_targets_out, box_targets_out, num_positives = anchor_labeler.label_anchors(gt_boxes, gt_classes)
     print("cls_targets_out:", type(cls_targets_out), [z.shape for z in cls_targets_out])
@@ -383,12 +377,13 @@ if __name__ == "__main__":
 
     print("indices of positive class:")
     print((cls_targets_out[0] >= 0).nonzero())
+    print("cls_targets_out:", cls_targets_out[0].shape)
     
     cls_targets_out = [torch.unsqueeze(x, dim=0) for x in cls_targets_out]
     box_targets_out = [torch.unsqueeze(x, dim=0) for x in box_targets_out]
 
     # need to permute to inference output
-    cls_out, box_out, indices, classes = post_process(
+    cls_out, box_out, indices, classes = _post_process(
         cls_targets_out, box_targets_out, num_levels=1, num_classes=1)
 
     print("detection output:")
