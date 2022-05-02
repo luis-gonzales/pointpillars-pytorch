@@ -26,7 +26,7 @@ class PointPillarsCollate:
         stacked_pillars = torch.zeros((batch_size, *batch[0]["stacked_pillars"].shape), dtype=torch.float32)
         pillar_indices = torch.zeros((batch_size, *batch[0]["pillar_indices"].shape), dtype=torch.int64)
         cls_targets = torch.zeros((batch_size, *self.image_shape, 2), dtype=torch.int64)    # 2 anchors (not ideal to be hardcoded)
-        box_targets = torch.zeros((batch_size, *self.image_shape, 12), dtype=torch.float32) # 6 vars * 2 anchors (not ideal to be hardcoded)
+        box_targets = torch.zeros((batch_size, *self.image_shape, 14), dtype=torch.float32) # 7 vars * 2 anchors (not ideal to be hardcoded)
         num_positives_targets = torch.zeros((batch_size), dtype=torch.float32)
         
         for i in range(batch_size):
@@ -90,25 +90,19 @@ class KittiDataset(Dataset):
                 continue
 
             occluded = int(obj_split[2])    # 0=fully visible, 1=partly occluded, 2=largely occluded, 3=unknown
-            h, w , l, x, y, z, rot_y = [float(obj_split[z]) for z in [8, 9, 10, 11, 12, 13, 14]]
+            h, w, l, x, y, z, rot_y = [float(obj_split[z]) for z in [8, 9, 10, 11, 12, 13, 14]]
 
             # convert from cam2 coordinates to velodyne/point cloud coordinates
             x_velo, y_velo, z_velo = self._cam2_to_velo(np.array([[x, y-h/2, z]]), calib)[0]
 
-            # flip dimensions when angle within range
-            if (abs(rot_y) > np.pi/4) and (abs(rot_y) < 3/4*np.pi):
-                temp_w = w
-                w = l
-                l = temp_w
-
-            gt_boxes.append([x_velo, y_velo, z_velo, w, l, h])  # w is distance along x_velo, l is distance along y_velo
+            gt_boxes.append([x_velo, y_velo, z_velo, l, w, h, -rot_y - np.pi/2])  # w is distance along x_velo, l is distance along y_velo
             gt_classes.append(1)
 
         if gt_boxes:
             gt_boxes = np.array(gt_boxes, dtype=np.float32)
             gt_classes = np.array(gt_classes, dtype=np.int64)
         else:
-            gt_boxes = np.zeros((0, 6), dtype=np.float32)
+            gt_boxes = np.zeros((0, 7), dtype=np.float32)
             gt_classes = np.array(gt_classes, dtype=np.int64)
 
         file = self.root_dir / "velodyne" / f"{file_id}.bin"

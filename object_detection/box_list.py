@@ -50,7 +50,7 @@ class BoxList(object):
         Raises:
             ValueError: if invalid dimensions for bbox data or if bbox data is not in float32 format.
         """
-        if len(boxes.shape) != 2 or (boxes.shape[-1] != 6 and boxes.shape[-1] != 4):
+        if len(boxes.shape) != 2 or (boxes.shape[-1] != 7 and boxes.shape[-1] != 4):
             raise ValueError('Invalid dimensions for box data.')
         if boxes.dtype != torch.float32:
             raise ValueError('Invalid tensor type: should be tf.float32')
@@ -156,8 +156,7 @@ class BoxList(object):
             a list of 4 1-D tensors [ycenter, xcenter, height, width].
         """
         box_corners = self.boxes()
-        x, y, z, w, l, h = box_corners.t().unbind()
-        return x, y, z, w, l, h
+        return box_corners.t().unbind() # x, y, z, w, l, h, theta
 
     def transpose_coordinates(self):
         """Transpose the coordinate representation in a boxlist.

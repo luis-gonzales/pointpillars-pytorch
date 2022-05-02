@@ -76,7 +76,7 @@ class FasterRcnnBoxCoder(object):
 
     #@property
     def code_size(self):
-        return 6
+        return 7
 
     def encode(self, boxes: BoxList, anchors: BoxList):
         """Encode a box collection with respect to anchor collection.
@@ -89,23 +89,24 @@ class FasterRcnnBoxCoder(object):
             a tensor representing N anchor-encoded boxes of the format [ty, tx, th, tw].
         """
         # Convert anchors to the center coordinate representation.
-        xcenter_a, ycenter_a, zcenter_a, wa, la, ha = anchors.get_center_coordinates_and_sizes()
-        xcenter, ycenter, zcenter, w, l, h = boxes.get_center_coordinates_and_sizes()
+        x_a, y_a, z_a, w_a, l_a, h_a, theta_a = anchors.get_center_coordinates_and_sizes()
+        x, y, z, w, l, h, theta = boxes.get_center_coordinates_and_sizes()
 
         # Avoid NaN in division and log below.
-        wa += self.eps
-        la += self.eps
-        ha += self.eps
+        w_a += self.eps
+        l_a += self.eps
+        h_a += self.eps
         w += self.eps
         l += self.eps
         h += self.eps
 
-        tx = (xcenter - xcenter_a) / torch.sqrt(wa**2 + la**2)
-        ty = (ycenter - ycenter_a) / torch.sqrt(wa**2 + la**2)
-        tz = (zcenter - zcenter_a) / ha
-        tw = torch.log(w / wa)
-        tl = torch.log(l / la)
-        th = torch.log(h / ha)
+        tx = (x - x_a) / torch.sqrt(w_a**2 + l_a**2)
+        ty = (y - y_a) / torch.sqrt(w_a**2 + l_a**2)
+        tz = (z - z_a) / h_a
+        tw = torch.log(w / w_a)
+        tl = torch.log(l / l_a)
+        th = torch.log(h / h_a)
+        ttheta = torch.sin(theta - theta_a)
         
         # Scales location targets as used in paper for joint training.
         if self._scale_factors is not None:
@@ -114,7 +115,7 @@ class FasterRcnnBoxCoder(object):
             th *= self._scale_factors[2]
             tw *= self._scale_factors[3]
         
-        return torch.stack([tx, ty, tz, tw, tl, th]).t()
+        return torch.stack([tx, ty, tz, tw, tl, th, ttheta]).t()
 
     def decode(self, rel_codes, anchors: BoxList):
         """Decode relative codes to boxes.

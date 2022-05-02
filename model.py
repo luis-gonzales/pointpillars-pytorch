@@ -180,7 +180,7 @@ class PointPillars(pl.LightningModule):
         num_anchors = 2                                 # 0, 90 degrees
         self.pillar_feature_net = PillarFeatureNet(hparams)
         self.backbone = Backbone(hparams)
-        self.box_net = HeadNet(num_anchors*6, hparams)  # x, y, z, w, l, h
+        self.box_net = HeadNet(num_anchors*7, hparams)  # x, y, z, w, l, h, theta
         self.cls_net = HeadNet(num_anchors*hparams.num_classes, hparams)
 
         for n, m in self.named_modules():

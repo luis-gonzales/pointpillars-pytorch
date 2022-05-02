@@ -54,18 +54,18 @@ def decode_box_outputs(rel_codes, anchors):
     Returns:
         outputs: bounding boxes.
     """
-    xcenter_a, ycenter_a, zcenter_a, wa, la, ha = anchors.unbind(dim=1)
+    x_a, y_a, z_a, w_a, l_a, h_a, theta_a = anchors.unbind(dim=1)
+    tx, ty, tz, tw, tl, th, ttheta = rel_codes.unbind(dim=1)
 
-    tx, ty, tz, tw, tl, th = rel_codes.unbind(dim=1)
+    x = tx * torch.sqrt(w_a**2 + l_a**2) + x_a
+    y = ty * torch.sqrt(w_a**2 + l_a**2) + y_a
+    z = tz * h_a + z_a
+    w = torch.exp(tw) * w_a
+    l = torch.exp(tl) * l_a
+    h = torch.exp(th) * h_a
+    theta = torch.arcsin(ttheta) + theta_a
 
-    xcenter = tx * torch.sqrt(wa**2 + la**2) + xcenter_a
-    ycenter = ty * torch.sqrt(wa**2 + la**2) + ycenter_a
-    zcenter = tz * ha + zcenter_a
-    w = torch.exp(tw) * wa
-    l = torch.exp(tl) * la
-    h = torch.exp(th) * ha
-
-    return torch.stack([xcenter, ycenter, zcenter, w, l, h], dim=1)
+    return torch.stack([x, y, z, w, l, h, theta], dim=1)
 
 
 def generate_detections(
@@ -101,8 +101,8 @@ def generate_detections(
         detections: detection results in a tensor with shape [max_det_per_image, 6],
             each row representing [x_min, y_min, x_max, y_max, score, class]
     """
-    assert box_outputs.shape[-1] == 6
-    assert anchor_boxes.shape[-1] == 6
+    assert box_outputs.shape[-1] == 7
+    assert anchor_boxes.shape[-1] == 7
     assert cls_outputs.shape[-1] == 1
 
     anchor_boxes = anchor_boxes[indices, :]
@@ -145,9 +145,9 @@ def generate_detections(
     if num_det < max_det_per_image:
         detections = torch.cat([
             detections,
-            torch.zeros((max_det_per_image - num_det, 6), device=detections.device, dtype=detections.dtype)
+            torch.zeros((max_det_per_image - num_det, 7), device=detections.device, dtype=detections.dtype)
         ], dim=0)
-    return detections   # x, y, z, w, l, h, conf, class_idx
+    return detections   # x, y, z, w, l, h, theta, conf, class_idx
 
 
 def get_feat_sizes(image_size: Tuple[int, int], max_level: int):
@@ -195,7 +195,6 @@ class Anchors(nn.Module):
         self.min_level = min_level
         self.max_level = max_level
         self.num_scales = num_scales
-        # self.aspect_ratios = aspect_ratios
         self.z_center = z_center
         self.resolution = resolution
         self.anchor_size = anchor_size
@@ -217,12 +216,11 @@ class Anchors(nn.Module):
     def _generate_configs(self):
         """Generate configurations of anchor boxes."""
         anchor_configs = {}
-        feat_sizes = self.feat_sizes
-        anchor_sizes = [self.anchor_size, [self.anchor_size[z] for z in [1, 0, 2]]]
+        angles = [0, np.pi/2]
         for level in range(self.min_level, self.max_level + 1):
             anchor_configs[level] = []
-            for anchor_size in anchor_sizes:
-                anchor_configs[level].append((anchor_size))
+            for angle in angles:
+                anchor_configs[level].append((angle))
         return anchor_configs
 
     def _generate_boxes(self):
@@ -232,7 +230,7 @@ class Anchors(nn.Module):
         boxes_all = []
         for _, configs in self.config.items():
             boxes_level = []
-            for anchor_size_x, anchor_size_y, anchor_size_z in configs:
+            for angle in configs:
                 y = np.arange(res / 2, self.image_size[0] * res, res)
                 x = np.arange(-self.image_size[1] * res / 2 + res / 2, self.image_size[1] * res / 2, res)
 
@@ -241,24 +239,24 @@ class Anchors(nn.Module):
                 yv = yv.reshape(-1)
                 zv = np.repeat(self.z_center, xv.shape)
 
-                anchor_size_x = np.repeat(anchor_size_x, xv.shape)
-                anchor_size_y = np.repeat(anchor_size_y, xv.shape)
-                anchor_size_z = np.repeat(anchor_size_z, xv.shape)
+                widths = np.repeat(self.anchor_size[0], xv.shape)
+                lengths = np.repeat(self.anchor_size[1], xv.shape)
+                heights = np.repeat(self.anchor_size[2], xv.shape)
+                theta = np.repeat(angle, xv.shape)
 
-                boxes = np.vstack((yv, xv, zv, anchor_size_x, anchor_size_y, anchor_size_z))
+                boxes = np.vstack((yv, xv, zv, widths, lengths, heights, theta))
                 boxes = np.swapaxes(boxes, 0, 1)
                 boxes_level.append(np.expand_dims(boxes, axis=1))
 
             # concat anchors on the same level to the reshape NxAx4
             boxes_level = np.concatenate(boxes_level, axis=1)
-            boxes_all.append(boxes_level.reshape([-1, 6]))
+            boxes_all.append(boxes_level.reshape([-1, 7]))
 
         anchor_boxes = np.vstack(boxes_all)
         anchor_boxes = torch.from_numpy(anchor_boxes).float()
         return anchor_boxes
 
     def get_anchors_per_location(self):
-        # return self.num_scales * len(self.aspect_ratios)
         return self.num_scales * 2  # 0, 90 degrees (not ideal to be hardcoded)
 
 
@@ -357,7 +355,7 @@ if __name__ == "__main__":
     print("anchors.boxes:")
     print(anchors.boxes)    # x, y, z, w, l, h (w, l is birdseye view)
 
-    gt_boxes = [[58.49, -16.53, 2.39, 1.87, 3.69, 1.67]]    # x, y, z, w, l, h
+    gt_boxes = [[58.49, -16.53, 2.39, 1.87, 3.69, 1.67, 0.05]]    # x, y, z, w, l, h, theta
     gt_classes = [1]
 
     gt_boxes = np.array(gt_boxes, dtype=np.float32)

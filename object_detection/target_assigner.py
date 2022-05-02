@@ -30,8 +30,10 @@ Note that TargetAssigners only operate on detections from a single
 image at a time, so any logic for applying a TargetAssigner to multiple
 images must be handled externally.
 """
-import torch
 from typing import Optional
+
+import numpy as np
+import torch
 
 from . import box_list
 from .region_similarity_calculator import IouSimilarity
@@ -144,14 +146,28 @@ class TargetAssigner(object):
         #     groundtruth_weights = torch.ones([num_gt_boxes], device=device)
 
         # ignore height and elevation during matching; similarity calc assumes y1,x1,y2,x2
+        theta = torch.remainder(groundtruth_boxes.data["boxes"][:, -1], 2*np.pi)
+        condition_a = torch.logical_and(theta > np.pi/4, theta < 3/4*np.pi)
+        condition_b = torch.logical_and(theta > 5/4*np.pi, theta < 7/4*np.pi)
+        condition = torch.logical_or(condition_a, condition_b)
+        condition = torch.repeat_interleave(condition, repeats=2)
+        condition = torch.reshape(condition, (condition.shape[0]//2, 2))
+        delta = torch.where(condition, groundtruth_boxes.data["boxes"][:, [3, 4]], groundtruth_boxes.data["boxes"][:, [4, 3]])
         gt_boxes_for_compare = groundtruth_boxes.data["boxes"][:, [1, 0, 1, 0]]
-        gt_boxes_for_compare[:, [0, 1]] -= groundtruth_boxes.data["boxes"][:, [4, 3]] / 2
-        gt_boxes_for_compare[:, [2, 3]] += groundtruth_boxes.data["boxes"][:, [4, 3]] / 2
+        gt_boxes_for_compare[:, [0, 1]] -= delta / 2
+        gt_boxes_for_compare[:, [2, 3]] += delta / 2
         gt_boxes_for_compare = BoxList(gt_boxes_for_compare)
 
+        theta_a = torch.remainder(anchors.data["boxes"][:, -1], 2*np.pi)
+        condition_a = torch.logical_and(theta_a > np.pi/4, theta_a < 3/4*np.pi)
+        condition_b = torch.logical_and(theta_a > 5/4*np.pi, theta_a < 7/4*np.pi)
+        condition = torch.logical_or(condition_a, condition_b)
+        condition = torch.repeat_interleave(condition, repeats=2)
+        condition = torch.reshape(condition, (condition.shape[0]//2, 2))
+        delta_a = torch.where(condition, anchors.data["boxes"][:, [3, 4]], anchors.data["boxes"][:, [4, 3]])
         anchors_for_compare = anchors.data["boxes"][:, [1, 0, 1, 0]]
-        anchors_for_compare[:, [0, 1]] -= anchors.data["boxes"][:, [4, 3]] / 2
-        anchors_for_compare[:, [2, 3]] += anchors.data["boxes"][:, [4, 3]] / 2
+        anchors_for_compare[:, [0, 1]] -= delta_a / 2
+        anchors_for_compare[:, [2, 3]] += delta_a / 2
         anchors_for_compare = BoxList(anchors_for_compare)
 
         match_quality_matrix = self._similarity_calc.compare(gt_boxes_for_compare, anchors_for_compare)
@@ -177,7 +193,7 @@ class TargetAssigner(object):
             reg_targets: a float32 tensor with shape [N, box_code_dimension]
         """
         device = anchors.device()
-        zero_box = torch.zeros((1, 6), device=device)
+        zero_box = torch.zeros((1, 7), device=device)
         matched_gt_boxes = match.gather_based_on_match(
             groundtruth_boxes.boxes(), unmatched_value=zero_box, ignored_value=zero_box)
         matched_gt_boxlist = box_list.BoxList(matched_gt_boxes)
