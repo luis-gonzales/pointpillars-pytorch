@@ -63,6 +63,7 @@ def decode_box_outputs(rel_codes, anchors):
     w = torch.exp(tw) * w_a
     l = torch.exp(tl) * l_a
     h = torch.exp(th) * h_a
+    ttheta = torch.clamp(ttheta, -1.0, 1.0)
     theta = torch.arcsin(ttheta) + theta_a
 
     return torch.stack([x, y, z, w, l, h, theta], dim=1)
