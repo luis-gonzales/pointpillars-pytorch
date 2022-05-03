@@ -11,9 +11,10 @@ class RandomFlip:
         classes = input_d["classes"]
         boxes = input_d["boxes"]
 
-        # if np.random.random() < self.prob:
-        #     pt_cloud[:, 1] = -pt_cloud[:, 1]
-        #     boxes[:, 1] = -boxes[:, 1]
+        if np.random.random() < self.prob:
+            pt_cloud[:, 1] = -pt_cloud[:, 1]
+            boxes[:, 1] = -boxes[:, 1]      # y
+            boxes[:, -1] = -boxes[:, -1]    # theta
 
         return pt_cloud, classes, boxes
 
