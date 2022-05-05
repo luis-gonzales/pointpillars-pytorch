@@ -140,7 +140,7 @@ class Backbone(nn.Module):
 
     def forward(self, x):
         x_block1 = self.block1(x)
-        x_block2 = self.block2(x_block1)        
+        x_block2 = self.block2(x_block1)
         x_block3 = self.block3(x_block2)
 
         x_up1 = self.up1(x_block1)
@@ -257,7 +257,7 @@ class PointPillars(pl.LightningModule):
         parser.add_argument("--resolution", type=float, default=0.16)
         parser.add_argument("--encoder_channels", type=int, default=64)
         parser.add_argument("--x_range", nargs="+", default=[0.0, 70.4], type=float)    # space-separated in command-line
-        parser.add_argument("--y_range", nargs="+", default=[-40.0, 40.0], type=float)  # space-separated in command-line
+        parser.add_argument("--y_range", nargs="+", default=[-41.6, 41.6], type=float)  # space-separated in command-line
         parser.add_argument("--z_range", nargs="+", default=[-3.0, 1.0], type=float)    # space-separated in command-line
         parser.add_argument("--backbone_stride", type=int, default=1)
         parser.add_argument("--num_classes", type=int, default=1)
