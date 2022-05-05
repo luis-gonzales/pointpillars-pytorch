@@ -343,6 +343,7 @@ if __name__ == "__main__":
 
 
     w, h = 80.0, 70.4   # car x, y, z range is [(0, 70.4), (-40, 40), (-3, 1)]
+    backbone_stride = 2
 
     anchors = Anchors(
         min_level=0,
@@ -351,7 +352,7 @@ if __name__ == "__main__":
         anchor_size=(1.6, 3.9, 1.5), # w, l, h
         image_size=(h, w),
         z_center=-1,
-        resolution=0.16)
+        resolution=0.16*backbone_stride)
 
     print("anchors.boxes:")
     print(anchors.boxes)    # x, y, z, w, l, h (w, l is birdseye view)
