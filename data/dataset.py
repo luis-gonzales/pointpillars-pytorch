@@ -128,10 +128,12 @@ class KittiDataModule(pl.LightningDataModule):
         super().__init__()
 
         grid_range = (args.x_range[1] - args.x_range[0], args.y_range[1] - args.y_range[0])
+        resolution = args.resolution * args.backbone_stride
+
         anchors = Anchors(min_level=0, max_level=0, num_scales=1, anchor_size=args.anchor_size,
-            image_size=grid_range, z_center=args.anchor_zcenter, resolution=args.resolution)
+            image_size=grid_range, z_center=args.anchor_zcenter, resolution=resolution)
         anchor_labeler = AnchorLabeler(anchors, pos_match_threshold=args.positive_threshold, neg_match_threshold=args.negative_threshold)
-        grid_size = [int(z/args.resolution) for z in grid_range]
+        grid_size = [int(z/resolution) for z in grid_range]
 
         self.collate_fn = PointPillarsCollate(anchor_labeler=anchor_labeler, image_shape=grid_size)
         self.batch_size = args.batch_size
@@ -166,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--positive_threshold", type=float, default=0.6)
     parser.add_argument("--negative_threshold", type=float, default=0.45)
     parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--backbone_stride", type=int, default=2)
     args = parser.parse_args()
 
     dm = KittiDataModule("sample_dataset", args)
