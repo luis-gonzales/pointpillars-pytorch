@@ -117,6 +117,7 @@ class KittiDataset(Dataset):
         stacked_pillars, pillar_indices = pt_cloud_to_pillars(pt_cloud, self.config)
 
         return {
+            "file_id": file_id,
             "stacked_pillars": stacked_pillars,
             "pillar_indices": pillar_indices,
             "gt_boxes": gt_boxes,
