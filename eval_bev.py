@@ -8,7 +8,8 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from data.dataset import KittiDataset
-from inference import PointPillarsInference, box3d_to_bev
+from inference.detector import PointPillarsInference
+from inference.inference_processing import box3d_to_bev
 
 
 parser = ArgumentParser()
