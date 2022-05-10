@@ -1,11 +1,18 @@
+import json
 import math
+from pathlib import Path
 
+import numpy as np
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_only
 import torch
 from torch import nn
 import wandb
 
+from anchors import Anchors, generate_detections
+from inference.inference_processing import post_process, box3d_to_bev
 from loss import DetectionLoss
 
 
@@ -193,6 +200,15 @@ class PointPillars(pl.LightningModule):
         self.cls_loss_val_m = AverageMeter()
         self.box_loss_val_m = AverageMeter()
 
+        # anchors used to generate detections during validation step
+        grid_range = (hparams.x_range[1] - hparams.x_range[0], hparams.y_range[1] - hparams.y_range[0])
+        resolution = hparams.resolution * hparams.backbone_stride
+        self.anchors = Anchors(min_level=0, max_level=0, num_scales=1, anchor_size=hparams.anchor_size,
+            image_size=grid_range, z_center=hparams.anchor_zcenter, resolution=resolution)
+
+        self.data_path = Path(hparams.data_path)
+        self.eval_predicts = []
+
     def forward(self, x, indices):
         x = self.pillar_feature_net(x, indices)
         x = self.backbone(x)
@@ -222,11 +238,24 @@ class PointPillars(pl.LightningModule):
         self.cls_loss_train_m.reset()
 
     def on_train_epoch_end(self, *args, **kwargs):
+        # create json for bev coco eval
+        with open(self.data_path / "coco_eval_dt.json", mode="w") as fp:
+            json.dump(self.eval_predicts, fp)
+
+        coco_gt = COCO(str(self.data_path / "coco_eval_gt.json"))
+        coco_dt = coco_gt.loadRes(str(self.data_path / "coco_eval_dt.json"))
+        coco_eval = COCOeval(coco_gt, coco_dt, "bbox")
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+        metric = coco_eval.stats[0]         # mAP 0.5-0.95
+
         wandb.log({
             "cls_loss_train": self.cls_loss_train_m.avg,
             "box_loss_train": self.box_loss_train_m.avg,
             "cls_loss_val": self.cls_loss_val_m.avg,
-            "box_loss_val": self.box_loss_val_m.avg})
+            "box_loss_val": self.box_loss_val_m.avg,
+            "bev_map": metric})
 
     @rank_zero_only
     def validation_step(self, batch, batch_idx):
@@ -244,9 +273,30 @@ class PointPillars(pl.LightningModule):
         self.cls_loss_val_m.update(cls_loss)
         self.box_loss_val_m.update(box_loss)
 
+        # generate detections for bev coco eval
+        cls_out, box_out, indices, classes = post_process(
+            [cls_out], [box_out], num_levels=1, num_classes=1)
+
+        for k in range(cls_out.shape[0]):       # batch-level
+            detections = generate_detections(
+                cls_out[k], box_out[k], self.anchors.boxes, indices[k], classes[k], None, None)
+            mask = detections[:, 7] > 0.05
+            detections = detections[mask]
+
+            bev_dets = box3d_to_bev(detections[:, :7])
+            for bev_pts, conf, class_id in zip(bev_dets, detections[:, 7], detections[:, 8]):
+                right, left = np.min(bev_pts[0]), np.max(bev_pts[0])
+                bottom, top = np.min(bev_pts[1]), np.max(bev_pts[1])
+                self.eval_predicts.append({
+                    "image_id": batch["file_ids"][k],
+                    "bbox": [left, top, left-right, top-bottom],
+                    "score": float(conf),
+                    "category_id": int(class_id)})
+
     def on_val_epoch_start(self):
         self.cls_loss_val_m.reset()
         self.box_loss_val_m.reset()
+        self.eval_predicts = []
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams["hparams"].lr)
@@ -259,7 +309,7 @@ class PointPillars(pl.LightningModule):
         parser.add_argument("--x_range", nargs="+", default=[0.0, 70.4], type=float)    # space-separated in command-line
         parser.add_argument("--y_range", nargs="+", default=[-41.6, 41.6], type=float)  # space-separated in command-line
         parser.add_argument("--z_range", nargs="+", default=[-3.0, 1.0], type=float)    # space-separated in command-line
-        parser.add_argument("--backbone_stride", type=int, default=1)
+        parser.add_argument("--backbone_stride", type=int, default=2)
         parser.add_argument("--num_classes", type=int, default=1)
         parser.add_argument("--anchor_size", default=[1.6, 3.9, 1.5], type=float)       # w, l, h
         parser.add_argument("--anchor_zcenter", default=-1.0, type=float)
