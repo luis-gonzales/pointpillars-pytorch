@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +11,7 @@ from anchors import Anchors, AnchorLabeler
 from calibration import Calibration
 from data.pt_cloud import pt_cloud_to_pillars
 from data.transforms import train_transform
+from inference.inference_processing import box3d_to_bev
 
 
 class PointPillarsCollate:
@@ -28,7 +30,8 @@ class PointPillarsCollate:
         cls_targets = torch.zeros((batch_size, *self.image_shape, 2), dtype=torch.int64)    # 2 anchors (not ideal to be hardcoded)
         box_targets = torch.zeros((batch_size, *self.image_shape, 14), dtype=torch.float32) # 7 vars * 2 anchors (not ideal to be hardcoded)
         num_positives_targets = torch.zeros((batch_size), dtype=torch.float32)
-        
+        file_ids = []
+
         for i in range(batch_size):
             # input/point cloud
             stacked_pillars[i] = torch.from_numpy(batch[i]["stacked_pillars"])
@@ -44,13 +47,15 @@ class PointPillarsCollate:
             cls_targets[i] = cls_targets_out[0]
             box_targets[i] = box_targets_out[0]
             num_positives_targets[i] = num_positives
+            file_ids.append(batch[i]["file_id"])
 
         return {
             "stacked_pillars": stacked_pillars,
             "pillar_indices": pillar_indices,
             "cls_targets": cls_targets,
             "box_targets": box_targets,
-            "num_positives": num_positives_targets}
+            "num_positives": num_positives_targets,
+            "file_ids": file_ids}
 
 
 class KittiDataset(Dataset):
@@ -127,6 +132,8 @@ class KittiDataset(Dataset):
 class KittiDataModule(pl.LightningDataModule):
     def __init__(self, root_dir, args):
         super().__init__()
+        if isinstance(root_dir, str):
+            root_dir = Path(root_dir)
 
         grid_range = (args.x_range[1] - args.x_range[0], args.y_range[1] - args.y_range[0])
         resolution = args.resolution * args.backbone_stride
@@ -145,6 +152,34 @@ class KittiDataModule(pl.LightningDataModule):
         if stage == "fit" or stage is None:
             self.train_ds = KittiDataset(self.root_dir, "train", self.args)
             self.val_ds = KittiDataset(self.root_dir, "val", self.args)
+
+            # create gt json for coco (bev) eval
+            images, annotations = [], []
+            obj_id = 1
+            for sample in self.val_ds:
+                images.append({"id": sample["file_id"]})
+
+                gt_boxes = sample["gt_boxes"]
+                gt_classes = sample["gt_classes"]
+                bev_anns = box3d_to_bev(gt_boxes)
+                for gt_cls, bev_pts in zip(gt_classes, bev_anns):
+                    right, left = np.min(bev_pts[0]), np.max(bev_pts[0])
+                    bottom, top = np.min(bev_pts[1]), np.max(bev_pts[1])
+                    w, l = left - right, top - bottom
+                    annotations.append({
+                        "image_id": sample["file_id"],
+                        "id": obj_id,
+                        "bbox": [left, top, w, l],
+                        "category_id": int(gt_cls),
+                        "iscrowd": False,       # required by pycocotools
+                        "area": w*l})           # required by pycocotools but doesn't seem to impact results
+                    obj_id += 1
+
+            with open(self.root_dir / "coco_eval_gt.json", mode="w") as fp:
+                json.dump({
+                    "annotations": annotations,
+                    "images": images,
+                    "categories": [{"name": "Car", "id": 1}]}, fp)
 
     def train_dataloader(self):
         self.train_ds.transform = train_transform()
