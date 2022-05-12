@@ -7,14 +7,14 @@ class RandomFlip:
         self.prob = prob
 
     def __call__(self, input_d):
-        pt_cloud = input_d["pt_cloud"]
+        pt_cloud = input_d["pt_cloud"]          # x, y, z, r
         classes = input_d["classes"]
-        boxes = input_d["boxes"]
+        boxes = input_d["boxes"]                # x, y, z, l, w, h, theta
 
         if np.random.random() < self.prob:
             pt_cloud[:, 1] = -pt_cloud[:, 1]
-            boxes[:, 1] = -boxes[:, 1]      # y
-            boxes[:, -1] = -boxes[:, -1]    # theta
+            boxes[:, 1] = -boxes[:, 1]          # y
+            boxes[:, -1] = -boxes[:, -1]        # theta
 
         return {
             "pt_cloud": pt_cloud,
@@ -43,10 +43,31 @@ class RandomTranslate:
         pt_cloud[:, 2] += z_delta
         boxes[:, 2] += z_delta
 
+        return {
+            "pt_cloud": pt_cloud,
+            "classes": classes,
+            "boxes": boxes}
+
+
+class RandomScale:
+    def __init__(self, min_scale=0.95, max_scale=1.05):
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+
+    def __call__(self, input_d):
+        pt_cloud = input_d["pt_cloud"]          # x, y, z, r
+        classes = input_d["classes"]
+        boxes = input_d["boxes"]                # x, y, z, l, w, h, theta
+
+        scale = np.random.uniform(self.min_scale, self.max_scale)
+
+        pt_cloud[:, :3] *= scale
+        boxes[:, :6] *= scale
+
         return pt_cloud, classes, boxes
 
 
 def train_transform():
-    transforms = [RandomFlip(), RandomTranslate()]
+    transforms = [RandomFlip(), RandomTranslate(), RandomScale()]
 
     return Compose(transforms)
